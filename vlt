@@ -261,26 +261,45 @@ cmd_status() {
 cmd_update() {
   local install_dir="$HOME/.local/bin"
   mkdir -p "$install_dir"
+  mkdir -p "$GLOBAL_CONFIG_DIR"
 
-  local current
-  current=$(vlt --version 2>/dev/null | awk '{print $2}')
+  local current="dev"
+  if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
+    current=$(cat "$GLOBAL_CONFIG_DIR/version")
+  fi
 
-  # Bust GitHub raw CDN cache with query param
-  local remote_script
-  remote_script=$(curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/vlt?t=$(date +%s)")
+  # Get latest tag from GitHub API
+  local latest
+  latest=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/tags" | jq -r '.[0].name // empty')
 
-  local remote_version
-  remote_version=$(echo "$remote_script" | grep -m1 "echo \"vlt " | sed 's/.*echo "vlt \(.*\)".*/\1/')
+  if [ -z "$latest" ]; then
+    echo "Error: could not fetch latest version from GitHub"
+    exit 1
+  fi
 
-  if [ "$current" = "$remote_version" ]; then
+  if [ "$current" = "$latest" ]; then
     echo "Already up to date (vlt ${current})"
     return
   fi
 
-  echo "$remote_script" >"$install_dir/vlt"
+  # Download the script at that tag
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/vlt" -o "$install_dir/vlt"
   chmod +x "$install_dir/vlt"
-  echo "Updated vlt ${current} → ${remote_version}"
+
+  # Save version locally
+  echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
+
+  echo "Updated vlt ${current} → ${latest}"
 }
+cmd_version() {
+  # Check local cached version first
+  local version="dev"
+  if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
+    version=$(cat "$GLOBAL_CONFIG_DIR/version")
+  fi
+  echo "vlt $version"
+}
+
 cmd_help() {
   cat <<'EOF'
 vlt — Vault secret injector
@@ -323,7 +342,7 @@ update)
   cmd_update "$@"
   ;;
 help | -h | --help) cmd_help ;;
--v | --version) echo "vlt 1.0.0" ;;
+version | -v | --version) cmd_version ;;
 *)
   echo "Unknown command: $1"
   echo "Run 'vlt help' for usage"
