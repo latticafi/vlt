@@ -15,7 +15,7 @@ cd vlt
 **Or one-liner (without cloning):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lattica/vlt/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/latticafi/vlt/main/install.sh | bash
 ```
 
 This installs `vlt` to `/usr/local/bin` and ensures `vault`, `envconsul`, and `jq` are installed via Homebrew.
@@ -40,11 +40,12 @@ vlt run -- bun run ...
 
 | Command                       | Description                                             |
 | ----------------------------- | ------------------------------------------------------- |
-| `vlt init`                    | Create `.vault.json` config in the current directory    |
+| `vlt init`                    | Create `.vlt.json` config in the current directory      |
 | `vlt login`                   | Authenticate to Vault (saves token to `~/.vault-token`) |
 | `vlt run -- <cmd>`            | Inject secrets as env vars and run a command            |
 | `vlt run -e staging -- <cmd>` | Use a specific environment                              |
 | `vlt status`                  | Check auth status and config                            |
+| `vlt update`                  | Update vlt verison                                      |
 
 ## Config
 
