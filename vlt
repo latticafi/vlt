@@ -147,6 +147,7 @@ cmd_login() {
 }
 cmd_run() {
   local env=""
+  local quiet=false
   local args=()
   # Parse flags
   while [[ $# -gt 0 ]]; do
@@ -154,6 +155,10 @@ cmd_run() {
     -e | --env)
       env="$2"
       shift 2
+      ;;
+    -q | --quiet)
+      quiet=true
+      shift
       ;;
     --)
       shift
@@ -197,11 +202,17 @@ cmd_run() {
     echo "Error: not authenticated. Run 'vlt login' first."
     exit 1
   fi
+  local log_flag=""
+  if [ "$quiet" = true ]; then
+    log_flag="-log-level=err"
+  fi
+
   exec envconsul \
     -vault-addr="$addr" \
     -secret="$secret_path" \
     -no-prefix \
     -once \
+    $log_flag \
     -- "${args[@]}"
 }
 cmd_status() {
@@ -263,6 +274,7 @@ Commands:
   vlt login                  Authenticate to Vault
   vlt run -- <command>       Inject secrets and run a command
   vlt run -e staging -- cmd  Use a specific environment
+  vlt run -q -- <command>    Suppress warnings
   vlt status                 Check auth and config
   vlt update                 Update vlt to the latest version
 Examples:
@@ -296,7 +308,7 @@ update)
   cmd_update "$@"
   ;;
 help | -h | --help) cmd_help ;;
--v | --version) echo "vlt 1.1.0" ;;
+-v | --version) echo "vlt 1.0.0" ;;
 *)
   echo "Unknown command: $1"
   echo "Run 'vlt help' for usage"
