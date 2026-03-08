@@ -48,7 +48,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/vlt" ]; then
   cp "$SCRIPT_DIR/vlt" "$INSTALL_DIR/vlt"
 else
-  curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$INSTALL_DIR/vlt"
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/vlt" -o "$INSTALL_DIR/vlt"
 fi
 
 chmod +x "$INSTALL_DIR/vlt"
@@ -77,8 +77,13 @@ if [ -n "$SHELL_RC" ]; then
 fi
 
 echo ""
-echo "Done! Run 'vlt help' to get started."
+echo "Done! Installed vlt to ~/.local/bin/vlt"
 echo ""
+if ! echo "$PATH" | grep -q '.local/bin'; then
+  echo "⚠  ~/.local/bin is not in your PATH yet."
+  echo "   Run: source ~/.zshrc (or open a new terminal)"
+  echo ""
+fi
 echo "Quick start:"
 echo "  vlt login              — authenticate to Vault"
 echo "  cd your-project && vlt init  — set up a project"

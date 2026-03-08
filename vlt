@@ -251,7 +251,7 @@ cmd_update() {
   local install_dir="$HOME/.local/bin"
   mkdir -p "$install_dir"
   echo "Updating vlt..."
-  curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$install_dir/vlt"
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/vlt" -o "$install_dir/vlt"
   chmod +x "$install_dir/vlt"
   echo "Updated to $(vlt --version)"
 }
