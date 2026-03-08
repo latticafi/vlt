@@ -296,7 +296,7 @@ update)
   cmd_update "$@"
   ;;
 help | -h | --help) cmd_help ;;
--v | --version) echo "vlt 1.0.0" ;;
+-v | --version) echo "vlt 1.1.0" ;;
 *)
   echo "Unknown command: $1"
   echo "Run 'vlt help' for usage"
