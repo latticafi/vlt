@@ -78,8 +78,12 @@ resolve_addr() {
 # Commands
 cmd_init() {
   if [ -f ".vlt.json" ]; then
-    echo "Error: .vlt.json already exists in this directory"
-    exit 1
+    local reinit=""
+    read -rp ".vlt.json already exists. Reinitialize? [y/N]: " reinit
+    if [[ ! "$reinit" =~ ^[Yy]$ ]]; then
+      echo "Cancelled."
+      exit 0
+    fi
   fi
   local addr=""
   local project=""
