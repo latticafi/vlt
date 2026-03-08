@@ -68,6 +68,9 @@ vlt run -- bun run ...
 ## Migrating from Infisical
 
 Infisical is a popular open-source secret manager.
+However it has a fairly strict free tier.
+Instead, can setup a self-hosted Vault cluster (or instance) and use vlt
+to mimic some of the functionality of Infisical like secret injection.
 Replace `infisical run --` with `vlt run --` in your `package.json`:
 
 ```diff
@@ -78,12 +81,6 @@ Replace `infisical run --` with `vlt run --` in your `package.json`:
 +   "db:migrate": "vlt run -- drizzle-kit migrate"
   }
 ```
-
-## Installation
-
-1. Clone this repo and run `./install.sh` (or use the one-liner above)
-2. `vlt login` — you'll need a Vault username/password from an admin
-3. `cd` into any project with a `.vault.json` and ready to go
 
 ## Uninstall
 
