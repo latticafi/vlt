@@ -243,6 +243,14 @@ cmd_status() {
     echo "Not authenticated (run 'vlt login')"
   fi
 }
+cmd_update() {
+  local install_path
+  install_path=$(which vlt 2>/dev/null || echo "/usr/local/bin/vlt")
+  echo "Updating vlt..."
+  sudo curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$install_path"
+  sudo chmod +x "$install_path"
+  echo "Updated to $(vlt --version)"
+}
 cmd_help() {
   cat <<'EOF'
 vlt — Vault secret injector
@@ -252,6 +260,7 @@ Commands:
   vlt run -- <command>       Inject secrets and run a command
   vlt run -e staging -- cmd  Use a specific environment
   vlt status                 Check auth and config
+  vlt update                 Update vlt to the latest version
 Examples:
   vlt init
   vlt login
@@ -277,6 +286,10 @@ run)
 status)
   shift
   cmd_status "$@"
+  ;;
+update)
+  shift
+  cmd_update "$@"
   ;;
 help | -h | --help) cmd_help ;;
 -v | --version) echo "vlt 1.0.0" ;;
