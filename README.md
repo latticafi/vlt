@@ -49,7 +49,7 @@ vlt run -- bun run ...
 
 ## Config
 
-`vlt init` creates a `.vault.json` in your project root:
+`vlt init` creates a `.vlt.json` in your project root:
 
 ```json
 {
