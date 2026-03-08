@@ -7,30 +7,26 @@
 #   vlt run -- <command>       — inject secrets and run command
 #   vlt run -e staging -- cmd  — use a specific environment
 #   vlt status                 — check auth + config
-#   vlt init                   — create .vault.json in current directory
+#   vlt init                   — create .vlt.json in current directory
 #
 # Config:
 #   Global: ~/.config/vlt/config.json (vault address + username, persists across logins)
-#   Project: .vault.json (per-repo, stores project name + secret paths)
-
+#   Project: .vlt.json (per-repo, stores project name + secret paths)
 set -euo pipefail
-
 GLOBAL_CONFIG_DIR="$HOME/.config/vlt"
 GLOBAL_CONFIG="$GLOBAL_CONFIG_DIR/config.json"
-
 # Find project config file (walk up directories)
 find_config() {
   local dir="$PWD"
   while [ "$dir" != "/" ]; do
-    if [ -f "$dir/.vault.json" ]; then
-      echo "$dir/.vault.json"
+    if [ -f "$dir/.vlt.json" ]; then
+      echo "$dir/.vlt.json"
       return 0
     fi
     dir=$(dirname "$dir")
   done
   return 1
 }
-
 # Read a JSON key from a file
 read_json() {
   local file="$1"
@@ -40,7 +36,6 @@ read_json() {
   value=$(jq -r "$key // empty" "$file" 2>/dev/null)
   echo "${value:-$default}"
 }
-
 # Global config helpers
 read_global() {
   local key="$1"
@@ -48,7 +43,6 @@ read_global() {
     read_json "$GLOBAL_CONFIG" "$key"
   fi
 }
-
 save_global() {
   local addr="$1"
   local username="$2"
@@ -60,21 +54,17 @@ save_global() {
 }
 EOF
 }
-
 # Resolve Vault address (project config → global config → prompt)
 resolve_addr() {
   local addr=""
-
-  # 1. Try project .vault.json
+  # 1. Try project .vlt.json
   if config_file=$(find_config 2>/dev/null); then
     addr=$(read_json "$config_file" '.addr')
   fi
-
   # 2. Try global config
   if [ -z "$addr" ]; then
     addr=$(read_global '.addr')
   fi
-
   # 3. Prompt
   if [ -z "$addr" ]; then
     read -rp "Vault address (e.g. https://vault.example.com): " addr
@@ -83,23 +73,18 @@ resolve_addr() {
       exit 1
     fi
   fi
-
   echo "$addr"
 }
-
 # Commands
 cmd_init() {
-  if [ -f ".vault.json" ]; then
-    echo "Error: .vault.json already exists in this directory"
+  if [ -f ".vlt.json" ]; then
+    echo "Error: .vlt.json already exists in this directory"
     exit 1
   fi
-
   local addr=""
   local project=""
-
   # Use saved address if we have one, only prompt if we don't
   addr=$(read_global '.addr')
-
   if [ -z "$addr" ]; then
     read -rp "Vault address (e.g. https://vault.example.com): " addr
     if [ -z "$addr" ]; then
@@ -109,14 +94,12 @@ cmd_init() {
   else
     echo "Using Vault at ${addr}"
   fi
-
   read -rp "Project name (e.g. rest-api, web-app): " project
   if [ -z "$project" ]; then
     echo "Error: project name is required"
     exit 1
   fi
-
-  cat >.vault.json <<EOF
+  cat >.vlt.json <<EOF
 {
   "addr": "${addr}",
   "project": "${project}",
@@ -128,24 +111,20 @@ cmd_init() {
   "default_env": "dev"
 }
 EOF
-
   echo ""
-  echo "Created .vault.json:"
+  echo "Created .vlt.json:"
   echo ""
-  cat .vault.json
+  cat .vlt.json
   echo ""
   echo "Commit this file so your team shares the config."
 }
-
 cmd_login() {
   local addr
   addr=$(resolve_addr)
-
   # Default to saved username
   local username=""
   local saved_username
   saved_username=$(read_global '.username')
-
   if [ -n "$saved_username" ]; then
     read -rp "Username [${saved_username}]: " username
     username="${username:-$saved_username}"
@@ -156,19 +135,15 @@ cmd_login() {
       exit 1
     fi
   fi
-
   # Save for next time
   save_global "$addr" "$username"
-
   export VAULT_ADDR="$addr"
   echo "Logging in to ${addr}..."
   vault login -method=userpass username="$username"
 }
-
 cmd_run() {
   local env=""
   local args=()
-
   # Parse flags
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -187,45 +162,37 @@ cmd_run() {
       ;;
     esac
   done
-
   if [ ${#args[@]} -eq 0 ]; then
     echo "Error: no command specified"
     echo "Usage: vlt run [-e env] -- <command>"
     exit 1
   fi
-
   # Find and read project config
   local config_file
   if ! config_file=$(find_config); then
-    echo "Error: no .vault.json found (run 'vlt init' first)"
+    echo "Error: no .vlt.json found (run 'vlt init' first)"
     exit 1
   fi
-
   local addr
   addr=$(resolve_addr)
-
   # Determine environment
   if [ -z "$env" ]; then
     env=$(read_json "$config_file" '.default_env' "dev")
   fi
-
   # Get the secret path for this environment
   local secret_path
   secret_path=$(read_json "$config_file" ".environments.\"${env}\"")
-
   if [ -z "$secret_path" ]; then
-    echo "Error: environment '${env}' not found in .vault.json"
+    echo "Error: environment '${env}' not found in .vlt.json"
     echo "Available environments:"
     jq -r '.environments | keys[]' "$config_file"
     exit 1
   fi
-
   # Check for vault token
   if [ ! -f "$HOME/.vault-token" ] && [ -z "${VAULT_TOKEN:-}" ]; then
     echo "Error: not authenticated. Run 'vlt login' first."
     exit 1
   fi
-
   exec envconsul \
     -vault-addr="$addr" \
     -secret="$secret_path" \
@@ -233,7 +200,6 @@ cmd_run() {
     -once \
     -- "${args[@]}"
 }
-
 cmd_status() {
   echo "── Config ──"
   local addr=""
@@ -250,19 +216,17 @@ cmd_status() {
     echo "Environments:"
     jq -r '.environments | to_entries[] | "  \(.key): \(.value)"' "$config_file"
   else
-    echo "No .vault.json found (run 'vlt init')"
+    echo "No .vlt.json found (run 'vlt init')"
     addr=$(read_global '.addr')
     if [ -n "$addr" ]; then
       echo "Global addr: $addr"
     fi
   fi
-
   local saved_username
   saved_username=$(read_global '.username')
   if [ -n "$saved_username" ]; then
     echo "Username:    $saved_username"
   fi
-
   echo ""
   echo "── Auth ──"
   if [ -z "$addr" ]; then
@@ -279,18 +243,15 @@ cmd_status() {
     echo "Not authenticated (run 'vlt login')"
   fi
 }
-
 cmd_help() {
   cat <<'EOF'
 vlt — Vault secret injector
-
 Commands:
-  vlt init                   Create .vault.json in current directory
+  vlt init                   Create .vlt.json in current directory
   vlt login                  Authenticate to Vault
   vlt run -- <command>       Inject secrets and run a command
   vlt run -e staging -- cmd  Use a specific environment
   vlt status                 Check auth and config
-
 Examples:
   vlt init
   vlt login
@@ -299,7 +260,6 @@ Examples:
   vlt run -e prod -- node dist/index.js
 EOF
 }
-
 # Main
 case "${1:-help}" in
 init)
