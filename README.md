@@ -73,7 +73,7 @@ Instead, you can setup a self-hosted Vault cluster (or instance) and use vlt
 to mimic some of the functionality of Infisical, like secret injection.
 
 This is done by wrapping [envconsul](https://github.com/hashicorp/envconsul)
-(which itself is a wrapper around HashiCorp Vault and Consul).
+(which itself is a wrapper around Vault and Consul).
 
 Replace `infisical run --` with `vlt run --` in your `package.json`:
 
