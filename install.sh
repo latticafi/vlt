@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+INSTALL_DIR="$HOME/.local/bin"
+
 echo "Installing vlt..."
 echo ""
 
@@ -34,26 +36,50 @@ else
   echo "  jq: ✓"
 fi
 
+# Create install directory
+mkdir -p "$INSTALL_DIR"
+
 # Install vlt
 echo ""
-echo "Installing vlt to /usr/local/bin..."
+echo "Installing vlt to ${INSTALL_DIR}..."
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -f "$SCRIPT_DIR/vlt" ]; then
-  # Running from cloned repo
-  sudo cp "$SCRIPT_DIR/vlt" /usr/local/bin/vlt
+  cp "$SCRIPT_DIR/vlt" "$INSTALL_DIR/vlt"
 else
-  # Running via curl — download from GitHub
-  sudo curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o /usr/local/bin/vlt
+  curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$INSTALL_DIR/vlt"
 fi
 
-sudo chmod +x /usr/local/bin/vlt
+chmod +x "$INSTALL_DIR/vlt"
+
+# Add to PATH if not already there
+SHELL_RC=""
+if [ -f "$HOME/.zshrc" ]; then
+  SHELL_RC="$HOME/.zshrc"
+elif [ -f "$HOME/.bashrc" ]; then
+  SHELL_RC="$HOME/.bashrc"
+elif [ -f "$HOME/.bash_profile" ]; then
+  SHELL_RC="$HOME/.bash_profile"
+fi
+
+if [ -n "$SHELL_RC" ]; then
+  if ! grep -q '.local/bin' "$SHELL_RC" 2>/dev/null; then
+    # shellcheck disable=SC2016
+    {
+      echo ''
+      echo '# vlt'
+      echo 'export PATH="$HOME/.local/bin:$PATH"'
+    } >>"$SHELL_RC"
+    echo "  Added ~/.local/bin to PATH in $(basename "$SHELL_RC")"
+    echo "  Run: source $SHELL_RC (or open a new terminal)"
+  fi
+fi
 
 echo ""
-echo "Done! Installed vlt $(vlt --version 2>/dev/null || echo "")"
+echo "Done! Run 'vlt help' to get started."
 echo ""
-echo "Get started:"
+echo "Quick start:"
 echo "  vlt login              — authenticate to Vault"
 echo "  cd your-project && vlt init  — set up a project"
 echo "  vlt run -- <command>   — inject secrets and run"

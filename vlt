@@ -1,6 +1,6 @@
 #!/bin/bash
 # vlt — Vault secret injector. Drop-in replacement for `infisical run`.
-# Install: copy to /usr/local/bin/vlt && chmod +x /usr/local/bin/vlt
+# Install: ./install.sh or vlt update
 #
 # Usage:
 #   vlt login                  — authenticate to Vault
@@ -244,11 +244,11 @@ cmd_status() {
   fi
 }
 cmd_update() {
-  local install_path
-  install_path=$(which vlt 2>/dev/null || echo "/usr/local/bin/vlt")
+  local install_dir="$HOME/.local/bin"
+  mkdir -p "$install_dir"
   echo "Updating vlt..."
-  sudo curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$install_path"
-  sudo chmod +x "$install_path"
+  curl -fsSL "https://raw.githubusercontent.com/lattica/vlt/main/vlt" -o "$install_dir/vlt"
+  chmod +x "$install_dir/vlt"
   echo "Updated to $(vlt --version)"
 }
 cmd_help() {
