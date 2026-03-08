@@ -1,0 +1,248 @@
+#!/bin/bash
+# vlt — Vault secret injector. Drop-in replacement for `infisical run`.
+# Install: copy to /usr/local/bin/vlt && chmod +x /usr/local/bin/vlt
+#
+# Usage:
+#   vlt login                  — authenticate to Vault
+#   vlt run -- <command>       — inject secrets and run command
+#   vlt run -e staging -- cmd  — use a specific environment
+#   vlt status                 — check auth + config
+#   vlt init                   — create .vault.json in current directory
+#
+# Config: reads .vault.json from current or parent directories (walks up).
+
+set -euo pipefail
+
+# Find config file (walk up directories)
+find_config() {
+  local dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.vault.json" ]; then
+      echo "$dir/.vault.json"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+# Read config values
+read_config() {
+  local config_file="$1"
+  local key="$2"
+  local default="${3:-}"
+  local value
+  value=$(jq -r "$key // empty" "$config_file" 2>/dev/null)
+  echo "${value:-$default}"
+}
+
+# Commands
+cmd_init() {
+  if [ -f ".vault.json" ]; then
+    echo "Error: .vault.json already exists in this directory"
+    exit 1
+  fi
+
+  local addr=""
+  local project=""
+
+  # Interactive prompts
+  read -rp "Vault address [https://vault.lattica.xyz]: " addr
+  addr="${addr:-https://vault.lattica.xyz}"
+
+  read -rp "Project name (e.g. rest-api, web-app): " project
+  if [ -z "$project" ]; then
+    echo "Error: project name is required"
+    exit 1
+  fi
+
+  cat >.vault.json <<EOF
+{
+  "addr": "${addr}",
+  "project": "${project}",
+  "environments": {
+    "dev": "secret/data/dev/${project}",
+    "staging": "secret/data/staging/${project}",
+    "prod": "secret/data/prod/${project}"
+  },
+  "default_env": "dev"
+}
+EOF
+
+  echo "Created .vault.json"
+  echo ""
+  cat .vault.json
+  echo ""
+  echo "Add .vault.json to version control so your team shares the config."
+}
+
+cmd_login() {
+  local addr="https://vault.lattica.xyz"
+
+  if config_file=$(find_config 2>/dev/null); then
+    addr=$(read_config "$config_file" '.addr' "$addr")
+  fi
+
+  export VAULT_ADDR="$addr"
+  echo "Logging in to ${addr}..."
+
+  vault login -method=userpass
+}
+
+cmd_run() {
+  local env=""
+  local args=()
+
+  # Parse flags
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -e | --env)
+      env="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      args=("$@")
+      break
+      ;;
+    *)
+      args=("$@")
+      break
+      ;;
+    esac
+  done
+
+  if [ ${#args[@]} -eq 0 ]; then
+    echo "Error: no command specified"
+    echo "Usage: vlt run [-e env] -- <command>"
+    exit 1
+  fi
+
+  # Find and read config
+  local config_file
+  if ! config_file=$(find_config); then
+    echo "Error: no .vault.json found (run 'vlt init' first)"
+    exit 1
+  fi
+
+  local addr
+  addr=$(read_config "$config_file" '.addr' "https://vault.lattica.xyz")
+
+  # Determine environment
+  if [ -z "$env" ]; then
+    env=$(read_config "$config_file" '.default_env' "dev")
+  fi
+
+  # Get the secret path for this environment
+  local secret_path
+  secret_path=$(read_config "$config_file" ".environments.\"${env}\"")
+
+  if [ -z "$secret_path" ]; then
+    echo "Error: environment '${env}' not found in .vault.json"
+    echo "Available environments:"
+    jq -r '.environments | keys[]' "$config_file"
+    exit 1
+  fi
+
+  # Check for vault token
+  if [ ! -f "$HOME/.vault-token" ] && [ -z "${VAULT_TOKEN:-}" ]; then
+    echo "Error: not authenticated. Run 'vlt login' first."
+    exit 1
+  fi
+
+  exec envconsul \
+    -vault-addr="$addr" \
+    -secret="$secret_path" \
+    -no-prefix \
+    -once \
+    -- "${args[@]}"
+}
+
+cmd_status() {
+  local addr="https://vault.lattica.xyz"
+  local config_file=""
+
+  echo "── Config ──"
+  if config_file=$(find_config 2>/dev/null); then
+    echo "Config file: $config_file"
+    addr=$(read_config "$config_file" '.addr' "$addr")
+    local project
+    project=$(read_config "$config_file" '.project')
+    local default_env
+    default_env=$(read_config "$config_file" '.default_env' "dev")
+    echo "Project:     $project"
+    echo "Default env: $default_env"
+    echo "Environments:"
+    jq -r '.environments | to_entries[] | "  \(.key): \(.value)"' "$config_file"
+  else
+    echo "No .vault.json found (run 'vlt init')"
+  fi
+
+  echo ""
+  echo "── Auth ──"
+  export VAULT_ADDR="$addr"
+  if vault token lookup -format=json 2>/dev/null | jq -r '"Token valid, expires: \(.data.expire_time // "never")"' 2>/dev/null; then
+    true
+  else
+    echo "Not authenticated (run 'vlt login')"
+  fi
+}
+
+cmd_help() {
+  cat <<'EOF'
+vlt — Vault secret injector
+
+Commands:
+  vlt init                   Create .vault.json in current directory
+  vlt login                  Authenticate to Vault
+  vlt run -- <command>       Inject secrets and run a command
+  vlt run -e staging -- cmd  Use a specific environment
+  vlt status                 Check auth and config
+
+Examples:
+  vlt init
+  vlt login
+  vlt run -- bun run --hot src/index.ts
+  vlt run -e staging -- drizzle-kit migrate
+  vlt run -e prod -- node dist/index.js
+
+Config (.vault.json):
+  {
+    "addr": "https://vault.lattica.xyz",
+    "project": "rest-api",
+    "environments": {
+      "dev": "secret/data/dev/rest-api",
+      "staging": "secret/data/staging/rest-api",
+      "prod": "secret/data/prod/rest-api"
+    },
+    "default_env": "dev"
+  }
+EOF
+}
+
+# Main
+case "${1:-help}" in
+init)
+  shift
+  cmd_init "$@"
+  ;;
+login)
+  shift
+  cmd_login "$@"
+  ;;
+run)
+  shift
+  cmd_run "$@"
+  ;;
+status)
+  shift
+  cmd_status "$@"
+  ;;
+help | -h | --help) cmd_help ;;
+-v | --version) echo "vlt 1.0.0" ;;
+*)
+  echo "Unknown command: $1"
+  echo "Run 'vlt help' for usage"
+  exit 1
+  ;;
+esac
