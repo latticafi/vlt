@@ -261,10 +261,25 @@ cmd_status() {
 cmd_update() {
   local install_dir="$HOME/.local/bin"
   mkdir -p "$install_dir"
-  echo "Updating vlt..."
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/vlt" -o "$install_dir/vlt"
+
+  local current
+  current=$(vlt --version 2>/dev/null | awk '{print $2}')
+
+  # Bust GitHub raw CDN cache with query param
+  local remote_script
+  remote_script=$(curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/vlt?t=$(date +%s)")
+
+  local remote_version
+  remote_version=$(echo "$remote_script" | grep -m1 "echo \"vlt " | sed 's/.*echo "vlt \(.*\)".*/\1/')
+
+  if [ "$current" = "$remote_version" ]; then
+    echo "Already up to date (vlt ${current})"
+    return
+  fi
+
+  echo "$remote_script" >"$install_dir/vlt"
   chmod +x "$install_dir/vlt"
-  echo "Updated to $(vlt --version)"
+  echo "Updated vlt ${current} → ${remote_version}"
 }
 cmd_help() {
   cat <<'EOF'
@@ -308,7 +323,7 @@ update)
   cmd_update "$@"
   ;;
 help | -h | --help) cmd_help ;;
--v | --version) echo "vlt 1.2.0" ;;
+-v | --version) echo "vlt 1.0.0" ;;
 *)
   echo "Unknown command: $1"
   echo "Run 'vlt help' for usage"
