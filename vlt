@@ -9,11 +9,16 @@
 #   vlt status                 — check auth + config
 #   vlt init                   — create .vault.json in current directory
 #
-# Config: reads .vault.json from current or parent directories (walks up).
+# Config:
+#   Global: ~/.config/vlt/config.json (vault address + username, persists across logins)
+#   Project: .vault.json (per-repo, stores project name + secret paths)
 
 set -euo pipefail
 
-# Find config file (walk up directories)
+GLOBAL_CONFIG_DIR="$HOME/.config/vlt"
+GLOBAL_CONFIG="$GLOBAL_CONFIG_DIR/config.json"
+
+# Find project config file (walk up directories)
 find_config() {
   local dir="$PWD"
   while [ "$dir" != "/" ]; do
@@ -26,26 +31,51 @@ find_config() {
   return 1
 }
 
-# Read config values
-read_config() {
-  local config_file="$1"
+# Read a JSON key from a file
+read_json() {
+  local file="$1"
   local key="$2"
   local default="${3:-}"
   local value
-  value=$(jq -r "$key // empty" "$config_file" 2>/dev/null)
+  value=$(jq -r "$key // empty" "$file" 2>/dev/null)
   echo "${value:-$default}"
 }
 
-# Resolve Vault address from config or prompt
+# Global config helpers
+read_global() {
+  local key="$1"
+  if [ -f "$GLOBAL_CONFIG" ]; then
+    read_json "$GLOBAL_CONFIG" "$key"
+  fi
+}
+
+save_global() {
+  local addr="$1"
+  local username="$2"
+  mkdir -p "$GLOBAL_CONFIG_DIR"
+  cat >"$GLOBAL_CONFIG" <<EOF
+{
+  "addr": "${addr}",
+  "username": "${username}"
+}
+EOF
+}
+
+# Resolve Vault address (project config → global config → prompt)
 resolve_addr() {
   local addr=""
 
-  # Try .vault.json first
+  # 1. Try project .vault.json
   if config_file=$(find_config 2>/dev/null); then
-    addr=$(read_config "$config_file" '.addr')
+    addr=$(read_json "$config_file" '.addr')
   fi
 
-  # If still empty, prompt
+  # 2. Try global config
+  if [ -z "$addr" ]; then
+    addr=$(read_global '.addr')
+  fi
+
+  # 3. Prompt
   if [ -z "$addr" ]; then
     read -rp "Vault address (e.g. https://vault.example.com): " addr
     if [ -z "$addr" ]; then
@@ -58,7 +88,6 @@ resolve_addr() {
 }
 
 # Commands
-
 cmd_init() {
   if [ -f ".vault.json" ]; then
     echo "Error: .vault.json already exists in this directory"
@@ -68,11 +97,17 @@ cmd_init() {
   local addr=""
   local project=""
 
-  # Interactive prompts
-  read -rp "Vault address (e.g. https://vault.example.com): " addr
+  # Use saved address if we have one, only prompt if we don't
+  addr=$(read_global '.addr')
+
   if [ -z "$addr" ]; then
-    echo "Error: Vault address is required"
-    exit 1
+    read -rp "Vault address (e.g. https://vault.example.com): " addr
+    if [ -z "$addr" ]; then
+      echo "Error: Vault address is required"
+      exit 1
+    fi
+  else
+    echo "Using Vault at ${addr}"
   fi
 
   read -rp "Project name (e.g. rest-api, web-app): " project
@@ -106,15 +141,26 @@ cmd_login() {
   local addr
   addr=$(resolve_addr)
 
-  export VAULT_ADDR="$addr"
-
+  # Default to saved username
   local username=""
-  read -rp "Username: " username
-  if [ -z "$username" ]; then
-    echo "Error: username is required"
-    exit 1
+  local saved_username
+  saved_username=$(read_global '.username')
+
+  if [ -n "$saved_username" ]; then
+    read -rp "Username [${saved_username}]: " username
+    username="${username:-$saved_username}"
+  else
+    read -rp "Username: " username
+    if [ -z "$username" ]; then
+      echo "Error: username is required"
+      exit 1
+    fi
   fi
 
+  # Save for next time
+  save_global "$addr" "$username"
+
+  export VAULT_ADDR="$addr"
   echo "Logging in to ${addr}..."
   vault login -method=userpass username="$username"
 }
@@ -148,7 +194,7 @@ cmd_run() {
     exit 1
   fi
 
-  # Find and read config
+  # Find and read project config
   local config_file
   if ! config_file=$(find_config); then
     echo "Error: no .vault.json found (run 'vlt init' first)"
@@ -156,21 +202,16 @@ cmd_run() {
   fi
 
   local addr
-  addr=$(read_config "$config_file" '.addr')
-
-  if [ -z "$addr" ]; then
-    echo "Error: no 'addr' in .vault.json"
-    exit 1
-  fi
+  addr=$(resolve_addr)
 
   # Determine environment
   if [ -z "$env" ]; then
-    env=$(read_config "$config_file" '.default_env' "dev")
+    env=$(read_json "$config_file" '.default_env' "dev")
   fi
 
   # Get the secret path for this environment
   local secret_path
-  secret_path=$(read_config "$config_file" ".environments.\"${env}\"")
+  secret_path=$(read_json "$config_file" ".environments.\"${env}\"")
 
   if [ -z "$secret_path" ]; then
     echo "Error: environment '${env}' not found in .vault.json"
@@ -198,11 +239,11 @@ cmd_status() {
   local addr=""
   if config_file=$(find_config 2>/dev/null); then
     echo "Config file: $config_file"
-    addr=$(read_config "$config_file" '.addr')
+    addr=$(read_json "$config_file" '.addr')
     local project
-    project=$(read_config "$config_file" '.project')
+    project=$(read_json "$config_file" '.project')
     local default_env
-    default_env=$(read_config "$config_file" '.default_env' "dev")
+    default_env=$(read_json "$config_file" '.default_env' "dev")
     echo "Address:     $addr"
     echo "Project:     $project"
     echo "Default env: $default_env"
@@ -210,10 +251,23 @@ cmd_status() {
     jq -r '.environments | to_entries[] | "  \(.key): \(.value)"' "$config_file"
   else
     echo "No .vault.json found (run 'vlt init')"
+    addr=$(read_global '.addr')
+    if [ -n "$addr" ]; then
+      echo "Global addr: $addr"
+    fi
+  fi
+
+  local saved_username
+  saved_username=$(read_global '.username')
+  if [ -n "$saved_username" ]; then
+    echo "Username:    $saved_username"
   fi
 
   echo ""
   echo "── Auth ──"
+  if [ -z "$addr" ]; then
+    addr=$(read_global '.addr')
+  fi
   if [ -z "$addr" ]; then
     echo "No Vault address configured"
     return
