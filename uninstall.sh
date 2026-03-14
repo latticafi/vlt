@@ -2,6 +2,25 @@
 set -euo pipefail
 
 echo "Removing vlt..."
+
+# Remove binary
 rm -f "$HOME/.local/bin/vlt"
-echo "Done. (vault, envconsul, and jq were left installed)"
-echo "You can remove the PATH line from your ~/.zshrc if you want."
+
+# Remove global config
+rm -rf "$HOME/.config/vlt"
+
+# Remove PATH line from shell rc
+for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+  if [ -f "$rc" ]; then
+    sed -i '' '/^# vlt$/d' "$rc" 2>/dev/null
+    sed -i '' '/^export PATH="\$HOME\/\.local\/bin:\$PATH"$/d' "$rc" 2>/dev/null
+  fi
+done
+
+# Remove starship integration
+STARSHIP_CONFIG="$HOME/.config/starship.toml"
+if [ -f "$STARSHIP_CONFIG" ]; then
+  sed -i '' '/^\[custom\.vlt\]$/,/^shell = \["bash", "--nologin"\]$/d' "$STARSHIP_CONFIG" 2>/dev/null
+fi
+
+echo "Finished removing vlt"

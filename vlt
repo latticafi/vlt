@@ -1,5 +1,5 @@
 #!/bin/bash
-# vlt — Vault secret injector. Drop-in replacement for `infisical run`.
+# vlt — Vault secret injector.
 # Install: ./install.sh or vlt update
 #
 # Usage:
@@ -8,6 +8,7 @@
 #   vlt run -e staging -- cmd  — use a specific environment
 #   vlt status                 — check auth + config
 #   vlt init                   — create .vlt.json in current directory
+#   vlt starship               — add vlt status to starship prompt
 #
 # Config:
 #   Global: ~/.config/vlt/config.json (vault address + username, persists across logins)
@@ -206,7 +207,7 @@ cmd_run() {
   if [ "$quiet" = true ]; then
     log_flag="-log-level=err"
   fi
-
+  # shellcheck disable=SC2086
   exec envconsul \
     -vault-addr="$addr" \
     -secret="$secret_path" \
@@ -216,6 +217,28 @@ cmd_run() {
     -- "${args[@]}"
 }
 cmd_status() {
+  # Hidden --prompt flag for starship
+  if [ "${1:-}" = "--prompt" ]; then
+    local config_file
+    config_file=$(find_config 2>/dev/null) || exit 0
+    local addr
+    addr=$(read_json "$config_file" '.addr')
+    local project
+    project=$(read_json "$config_file" '.project')
+    [ -z "$addr" ] || [ -z "$project" ] && exit 0
+    local status
+    status=$(curl -sk -o /dev/null -w "%{http_code}" \
+      "$addr/v1/sys/health" --max-time 3 2>/dev/null)
+    local icon
+    case "$status" in
+    200 | 429 | 473) icon="✓" ;;
+    503) icon="✗" ;;
+    *) icon="?" ;;
+    esac
+    echo "($project) [$icon]"
+    return
+  fi
+
   echo "── Config ──"
   local addr=""
   if config_file=$(find_config 2>/dev/null); then
@@ -262,44 +285,51 @@ cmd_update() {
   local install_dir="$HOME/.local/bin"
   mkdir -p "$install_dir"
   mkdir -p "$GLOBAL_CONFIG_DIR"
-
   local current="dev"
   if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
     current=$(cat "$GLOBAL_CONFIG_DIR/version")
   fi
-
   # Get latest tag from GitHub API
   local latest
   latest=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/tags" | jq -r '.[0].name // empty')
-
   if [ -z "$latest" ]; then
     echo "Error: could not fetch latest version from GitHub"
     exit 1
   fi
-
   if [ "$current" = "$latest" ]; then
     echo "Already up to date (vlt ${current})"
     return
   fi
-
   # Download the script at that tag
   curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/vlt" -o "$install_dir/vlt"
   chmod +x "$install_dir/vlt"
-
   # Save version locally
   echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
-
   echo "Updated vlt ${current} → ${latest}"
 }
 cmd_version() {
-  # Check local cached version first
   local version="dev"
   if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
     version=$(cat "$GLOBAL_CONFIG_DIR/version")
   fi
   echo "vlt $version"
 }
-
+cmd_starship() {
+  if ! command -v starship &>/dev/null; then
+    echo "Error: starship is not installed"
+    exit 1
+  fi
+  if starship config custom.vlt.command 2>/dev/null | grep -q 'vlt status'; then
+    echo "Already configured"
+    return
+  fi
+  starship config custom.vlt.command '~/.local/bin/vlt status --prompt'
+  starship config custom.vlt.when '~/.local/bin/vlt status --prompt'
+  starship config custom.vlt.symbol '\ue8d2'
+  starship config custom.vlt.format 'via [$symbol $output]($style) '
+  starship config custom.vlt.shell '["bash", "--nologin"]'
+  echo "Added vlt to starship prompt"
+}
 cmd_help() {
   cat <<'EOF'
 vlt — Vault secret injector
@@ -311,12 +341,7 @@ Commands:
   vlt run -q -- <command>    Suppress warnings
   vlt status                 Check auth and config
   vlt update                 Update vlt to the latest version
-Examples:
-  vlt init
-  vlt login
-  vlt run -- bun run --hot src/index.ts
-  vlt run -e staging -- drizzle-kit migrate
-  vlt run -e prod -- node dist/index.js
+  vlt starship               Add vlt status to starship prompt
 EOF
 }
 # Main
@@ -336,6 +361,10 @@ run)
 status)
   shift
   cmd_status "$@"
+  ;;
+starship)
+  shift
+  cmd_starship "$@"
   ;;
 update)
   shift
