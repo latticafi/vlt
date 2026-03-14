@@ -53,6 +53,11 @@ fi
 
 chmod +x "$INSTALL_DIR/vlt"
 
+# Save installed version
+mkdir -p "$HOME/.config/vlt"
+latest=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/tags" | jq -r '.[0].name // "dev"')
+echo "$latest" >"$HOME/.config/vlt/version"
+
 # Add to PATH if not already there
 SHELL_RC=""
 if [ -f "$HOME/.zshrc" ]; then
@@ -72,7 +77,6 @@ if [ -n "$SHELL_RC" ]; then
       echo 'export PATH="$HOME/.local/bin:$PATH"'
     } >>"$SHELL_RC"
     echo "  Added ~/.local/bin to PATH in $(basename "$SHELL_RC")"
-    echo "  Run: source $SHELL_RC (or open a new terminal)"
   fi
 fi
 
