@@ -22,8 +22,18 @@ This installs `vlt` to `/usr/local/bin` and ensures `vault`, `envconsul`, and `j
 
 ## Quick start
 
+At the moment, only supporting authentication with Vault's native userpass
+method. Once a user has authenticated with Vault, vlt will save a .vault-token
+token to their home directory. The security of this token is completely
+dependent on how userpass auth has been set up on the Vault host.
+
+This is **NOT** advisable in production. Vault has a number of other
+authentication methods, including OIDC. In theory, vlt doesn't care how you
+authenticate, so you could bypass `vlt login` entirely if desired.
+
 ```bash
 # Authenticate (one time, token lasts until it expires)
+# There must exist a valid userpass auth on the Vault host already
 vlt login
 
 # Set up a project
@@ -38,14 +48,16 @@ vlt run -- bun run ...
 
 ## Usage
 
-| Command                       | Description                                             |
-| ----------------------------- | ------------------------------------------------------- |
-| `vlt init`                    | Create `.vlt.json` config in the current directory      |
-| `vlt login`                   | Authenticate to Vault (saves token to `~/.vault-token`) |
-| `vlt run -- <cmd>`            | Inject secrets as env vars and run a command            |
-| `vlt run -e staging -- <cmd>` | Use a specific environment                              |
-| `vlt status`                  | Check auth status and config                            |
-| `vlt update`                  | Update vlt verison                                      |
+| Command                       | Description                                        |
+| ----------------------------- | -------------------------------------------------- |
+| `vlt init`                    | Create `.vlt.json` config in the current directory |
+| `vlt login`                   | Authenticate to Vault                              |
+| `vlt run -- <cmd>`            | Inject secrets as env vars and run a command       |
+| `vlt run -e staging -- <cmd>` | Use a specific environment                         |
+| `vlt run -q -- <cmd>`         | Suppress warnings                                  |
+| `vlt status`                  | Check auth status and config                       |
+| `vlt update`                  | Update vlt to the latest version                   |
+| `vlt starship`                | Add vlt status to starship prompt                  |
 
 ## Config
 
@@ -64,14 +76,29 @@ vlt run -- bun run ...
 }
 ```
 
-**Commit this to git** so your team shares the same config.
+## Starship integration
+
+```bash
+vlt starship
+```
+
+This adds your vault host's status to your [starship](https://starship.rs) prompt. When you're inside a project with `.vlt.json`, your prompt shows:
+
+```
+via  rest-api [✓]
+```
+
+Status icons: `✓` healthy, `✗` sealed, `?` unreachable.
+
+It disappears when you leave the project directory.
 
 ## Migrating from Infisical
 
 Infisical is a popular open-source secret manager.
-However it has a fairly strict free tier.
-Instead, you can setup a self-hosted Vault cluster (or instance) and use vlt
-to mimic some of the functionality of Infisical, like secret injection.
+However it has a fairly limited free tier. It can be self-hosted, however at
+that point it might just be more advisable to run a self-hosted enterprise
+solution like Vault.
+You can use vlt to mimic some of Infisical's pleasant devx features, like command line secret injection.
 
 This is done by wrapping [envconsul](https://github.com/hashicorp/envconsul)
 (which itself is a wrapper around Vault and Consul).
@@ -91,5 +118,4 @@ Replace `infisical run --` with `vlt run --` in your `package.json`:
 
 ```bash
 ./uninstall.sh
-# or just: rm /usr/local/bin/vlt
 ```
