@@ -1,5 +1,5 @@
 #!/bin/bash
-# vlt — Vault secret injector. Drop-in replacement for `infisical run`.
+# vlt — Vault secret injector.
 # Install: ./install.sh or vlt update
 #
 # Usage:
