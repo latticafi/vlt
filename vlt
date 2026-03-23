@@ -4,6 +4,9 @@
 #
 # Usage:
 #   vlt login                  — authenticate to Vault
+#   vlt login --gh             — authenticate via GitHub
+#   vlt login --userpass       — authenticate via username/password
+#   vlt login --token          — authenticate via Vault token
 #   vlt run -- <command>       — inject secrets and run command
 #   vlt run -e staging -- cmd  — use a specific environment
 #   vlt status                 — check auth + config
@@ -11,7 +14,7 @@
 #   vlt starship               — add vlt status to starship prompt
 #
 # Config:
-#   Global: ~/.config/vlt/config.json (vault address + username, persists across logins)
+#   Global: ~/.config/vlt/config.json (vault address + auth method, persists across logins)
 #   Project: .vlt.json (per-repo, stores project name + secret paths)
 set -euo pipefail
 GLOBAL_CONFIG_DIR="$HOME/.config/vlt"
@@ -46,11 +49,13 @@ read_global() {
 }
 save_global() {
   local addr="$1"
-  local username="$2"
+  local method="$2"
+  local username="${3:-}"
   mkdir -p "$GLOBAL_CONFIG_DIR"
   cat >"$GLOBAL_CONFIG" <<EOF
 {
   "addr": "${addr}",
+  "method": "${method}",
   "username": "${username}"
 }
 EOF
@@ -73,6 +78,10 @@ resolve_addr() {
       echo "Error: Vault address is required" >&2
       exit 1
     fi
+  fi
+  # Auto-prefix https:// if missing
+  if [[ ! "$addr" =~ ^https?:// ]]; then
+    addr="https://$addr"
   fi
   echo "$addr"
 }
@@ -124,27 +133,94 @@ EOF
   echo "Commit this file so your team shares the config."
 }
 cmd_login() {
+  local method=""
+  # Parse flags
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --github | --gh)
+      method="github"
+      shift
+      ;;
+    --userpass | --up)
+      method="userpass"
+      shift
+      ;;
+    --token)
+      method="token"
+      shift
+      ;;
+    *)
+      echo "Unknown login flag: $1"
+      echo "Usage: vlt login [--gh|--userpass|--token]"
+      exit 1
+      ;;
+    esac
+  done
   local addr
   addr=$(resolve_addr)
-  # Default to saved username
-  local username=""
-  local saved_username
-  saved_username=$(read_global '.username')
-  if [ -n "$saved_username" ]; then
-    read -rp "Username [${saved_username}]: " username
-    username="${username:-$saved_username}"
-  else
-    read -rp "Username: " username
-    if [ -z "$username" ]; then
-      echo "Error: username is required"
+  export VAULT_ADDR="$addr"
+  # Default to saved method
+  if [ -z "$method" ]; then
+    method=$(read_global '.method')
+  fi
+  # If still no method, prompt
+  if [ -z "$method" ]; then
+    echo "Select auth method:"
+    echo "  1) github    (recommended)"
+    echo "  2) userpass"
+    echo "  3) token"
+    local choice
+    read -rp "Choice [1]: " choice
+    case "${choice:-1}" in
+    1) method="github" ;;
+    2) method="userpass" ;;
+    3) method="token" ;;
+    *)
+      echo "Invalid choice"
+      exit 1
+      ;;
+    esac
+  fi
+  echo "Logging in to ${addr} via ${method}..."
+  case "$method" in
+  github)
+    if ! command -v gh &>/dev/null; then
+      echo "Error: GitHub CLI is required. Install with: brew install gh"
       exit 1
     fi
-  fi
-  # Save for next time
-  save_global "$addr" "$username"
-  export VAULT_ADDR="$addr"
-  echo "Logging in to ${addr}..."
-  vault login -method=userpass username="$username"
+    if ! gh auth status &>/dev/null; then
+      echo "Not logged into GitHub. Running gh auth login..."
+      gh auth login
+    fi
+    vault login -method=github token="$(gh auth token)"
+    save_global "$addr" "github" ""
+    ;;
+  userpass)
+    local username=""
+    local saved_username
+    saved_username=$(read_global '.username')
+    if [ -n "$saved_username" ]; then
+      read -rp "Username [${saved_username}]: " username
+      username="${username:-$saved_username}"
+    else
+      read -rp "Username: " username
+      if [ -z "$username" ]; then
+        echo "Error: username is required"
+        exit 1
+      fi
+    fi
+    vault login -method=userpass username="$username"
+    save_global "$addr" "userpass" "$username"
+    ;;
+  token)
+    vault login
+    save_global "$addr" "token" ""
+    ;;
+  *)
+    echo "Unknown auth method: $method"
+    exit 1
+    ;;
+  esac
 }
 cmd_run() {
   local env=""
@@ -238,7 +314,6 @@ cmd_status() {
     echo "($project) [$icon]"
     return
   fi
-
   echo "── Config ──"
   local addr=""
   if config_file=$(find_config 2>/dev/null); then
@@ -259,6 +334,11 @@ cmd_status() {
     if [ -n "$addr" ]; then
       echo "Global addr: $addr"
     fi
+  fi
+  local saved_method
+  saved_method=$(read_global '.method')
+  if [ -n "$saved_method" ]; then
+    echo "Auth:        $saved_method"
   fi
   local saved_username
   saved_username=$(read_global '.username')
@@ -301,7 +381,8 @@ cmd_update() {
     return
   fi
   # Download the script at that tag
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/vlt" -o "$install_dir/vlt"
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/vlt" -o "$install_dir/vlt.tmp"
+  mv "$install_dir/vlt.tmp" "$install_dir/vlt"
   chmod +x "$install_dir/vlt"
   # Save version locally
   echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
@@ -335,7 +416,9 @@ cmd_help() {
 vlt — Vault secret injector
 Commands:
   vlt init                   Create .vlt.json in current directory
-  vlt login                  Authenticate to Vault
+  vlt login [--gh]           Authenticate via GitHub (default)
+  vlt login --userpass       Authenticate via username/password
+  vlt login --token          Authenticate via Vault token
   vlt run -- <command>       Inject secrets and run a command
   vlt run -e staging -- cmd  Use a specific environment
   vlt run -q -- <command>    Suppress warnings
