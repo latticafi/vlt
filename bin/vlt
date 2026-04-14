@@ -386,21 +386,48 @@ cmd_update() {
   if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
     current=$(cat "$GLOBAL_CONFIG_DIR/version")
   fi
-  # Get latest tag from GitHub API
+  # Get latest release from GitHub API
+  local release_json
+  release_json=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/releases/latest" 2>/dev/null)
   local latest
-  latest=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/tags" | jq -r '.[0].name // empty')
+  latest=$(echo "$release_json" | jq -r '.tag_name // empty')
   if [ -z "$latest" ]; then
-    echo "Error: could not fetch latest version from GitHub"
+    echo "Error: could not fetch latest release from GitHub"
     exit 1
   fi
   if [ "$current" = "$latest" ]; then
     echo "Already up to date (vlt ${current})"
     return
   fi
-  # Download the script at that tag
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/vlt" -o "$install_dir/vlt.tmp"
-  mv "$install_dir/vlt.tmp" "$install_dir/vlt"
+  # Download the script from the release tag
+  echo "Downloading vlt ${latest}..."
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/bin/vlt" -o "$tmpdir/vlt"
+  # Verify checksum
+  local checksums_url
+  checksums_url=$(echo "$release_json" | jq -r '.assets[] | select(.name == "checksums.txt") | .browser_download_url // empty')
+  if [ -n "$checksums_url" ]; then
+    curl -fsSL "$checksums_url" -o "$tmpdir/checksums.txt"
+    local expected actual
+    expected=$(grep ' vlt$' "$tmpdir/checksums.txt" | awk '{print $1}')
+    actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
+    if [ "$expected" != "$actual" ]; then
+      echo "Error: checksum verification failed"
+      echo "  expected: $expected"
+      echo "  actual:   $actual"
+      exit 1
+    fi
+    echo "  Checksum verified ✓"
+  fi
+  mv "$tmpdir/vlt" "$install_dir/vlt"
   chmod +x "$install_dir/vlt"
+  # Update completions
+  local completion_dir="$HOME/.local/share/vlt/completions"
+  mkdir -p "$completion_dir"
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.bash" -o "$completion_dir/vlt.bash" 2>/dev/null
+  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.zsh" -o "$completion_dir/vlt.zsh" 2>/dev/null
   # Save version locally
   echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
   echo "Updated vlt ${current} → ${latest}"
