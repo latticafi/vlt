@@ -283,14 +283,31 @@ cmd_run() {
   if [ "$quiet" = true ]; then
     log_flag="-log-level=err"
   fi
+  # Use envconsul to safely fetch secrets from Vault, but run `env`
+  # instead of the real command. This lets envconsul handle all Vault
+  # auth, leases, and injection — then we exec the real command
+  # directly so it gets full TTY/stdin access.
+  # -pristine ensures we only capture injected secrets, not the
+  # inherited parent environment.
+  local secrets
   # shellcheck disable=SC2086
-  exec envconsul \
+  secrets=$(envconsul \
     -vault-addr="$addr" \
     -secret="$secret_path" \
     -no-prefix \
+    -pristine \
     -once \
     $log_flag \
-    -- "${args[@]}"
+    -- /usr/bin/env) || {
+    echo "Error: failed to fetch secrets from Vault"
+    exit 1
+  }
+  # Export each secret into the current environment
+  while IFS='=' read -r key value; do
+    [ -n "$key" ] && export "$key=$value"
+  done <<<"$secrets"
+  # Exec the command directly — full TTY/stdin preserved
+  exec "${args[@]}"
 }
 cmd_status() {
   # Hidden --prompt flag for starship
@@ -404,10 +421,10 @@ cmd_starship() {
     echo "Already configured"
     return
   fi
-  starship config custom.vlt.command '~/.local/bin/vlt status --prompt'
-  starship config custom.vlt.when '~/.local/bin/vlt status --prompt'
+  starship config custom.vlt.command "$HOME/.local/bin/vlt status --prompt"
+  starship config custom.vlt.when "$HOME/.local/bin/vlt status --prompt"
   starship config custom.vlt.symbol '\ue8d2'
-  starship config custom.vlt.format 'via [$symbol $output]($style) '
+  starship config custom.vlt.format "via [\$symbol \$output](\$style) "
   starship config custom.vlt.shell '["bash", "--nologin"]'
   echo "Added vlt to starship prompt"
 }
