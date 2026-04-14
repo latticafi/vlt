@@ -471,37 +471,39 @@ Commands:
   vlt starship               Add vlt status to starship prompt
 EOF
 }
-# Main
-case "${1:-help}" in
-init)
-  shift
-  cmd_init "$@"
-  ;;
-login)
-  shift
-  cmd_login "$@"
-  ;;
-run)
-  shift
-  cmd_run "$@"
-  ;;
-status)
-  shift
-  cmd_status "$@"
-  ;;
-starship)
-  shift
-  cmd_starship "$@"
-  ;;
-update)
-  shift
-  cmd_update "$@"
-  ;;
-help | -h | --help) cmd_help ;;
-version | -v | --version) cmd_version ;;
-*)
-  echo "Unknown command: $1"
-  echo "Run 'vlt help' for usage"
-  exit 1
-  ;;
-esac
+# Main — only run when executed, not when sourced (for testing)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1:-help}" in
+  init)
+    shift
+    cmd_init "$@"
+    ;;
+  login)
+    shift
+    cmd_login "$@"
+    ;;
+  run)
+    shift
+    cmd_run "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  starship)
+    shift
+    cmd_starship "$@"
+    ;;
+  update)
+    shift
+    cmd_update "$@"
+    ;;
+  help | -h | --help) cmd_help ;;
+  version | -v | --version) cmd_version ;;
+  *)
+    echo "Unknown command: $1"
+    echo "Run 'vlt help' for usage"
+    exit 1
+    ;;
+  esac
+fi
