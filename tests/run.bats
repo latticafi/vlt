@@ -39,3 +39,26 @@ load helper
   [ "$status" -eq 1 ]
   [[ "$output" == *"environment 'nonexistent' not found"* ]]
 }
+
+@test "cmd_run fails with invalid environment on multi-path config" {
+  local project_dir="$TEST_DIR/project"
+  mkdir -p "$project_dir"
+  create_multipath_config "$project_dir"
+  cd "$project_dir"
+  echo "fake-token" >"$HOME/.vault-token"
+  run cmd_run -e nonexistent -- echo hello
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"environment 'nonexistent' not found"* ]]
+}
+
+@test "cmd_run fails when not authenticated with multi-path config" {
+  local project_dir="$TEST_DIR/project"
+  mkdir -p "$project_dir"
+  create_multipath_config "$project_dir"
+  cd "$project_dir"
+  unset VAULT_TOKEN
+  rm -f "$HOME/.vault-token"
+  run cmd_run -- echo hello
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not authenticated"* ]]
+}
