@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: shellcheck
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck bin/vlt install.sh uninstall.sh completions/vlt.bash
+
+      - name: shfmt
+        run: |
+          sudo snap install shfmt
+          shfmt -d -i 2 bin/vlt install.sh uninstall.sh
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install bats
+        run: |
+          sudo apt-get install -y bats
+          # Install bats helpers
+          git clone --depth 1 https://github.com/bats-core/bats-support.git /tmp/bats-support
+          git clone --depth 1 https://github.com/bats-core/bats-assert.git /tmp/bats-assert
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq
+
+      - name: Run tests
+        run: bats tests/
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Syntax check
+        run: bash -n bin/vlt install.sh uninstall.sh
