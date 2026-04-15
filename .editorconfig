@@ -9,9 +9,4 @@ charset = utf-8
 [*.{sh,bash,bats}]
 indent_style = space
 indent_size = 2
-
-# shfmt flags:
-#   -ci  = indent case bodies
-#   -i 2 = 2-space indent
 shell_variant = bash
-switch_case_indent = true

@@ -8,6 +8,7 @@ on:
 
 jobs:
   lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,9 +21,10 @@ jobs:
       - name: shfmt
         run: |
           sudo snap install shfmt
-          shfmt -d -i 2 -ci bin/vlt install.sh uninstall.sh
+          shfmt -d -i 2 bin/vlt install.sh uninstall.sh
 
   test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,6 +43,7 @@ jobs:
         run: bats tests/
 
   validate:
+    name: Validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
