@@ -1,4 +1,5 @@
 #!/bin/bash
+# Test helper
 
 VLT_BIN="$(cd "$(dirname "$BATS_TEST_DIRNAME")" && pwd)/bin/vlt"
 
@@ -30,6 +31,31 @@ create_project_config() {
     "dev": "secret/data/dev/test-project",
     "staging": "secret/data/staging/test-project",
     "prod": "secret/data/prod/test-project"
+  },
+  "default_env": "dev"
+}
+EOF
+}
+
+# Create a .vlt.json with multiple secret paths per environment
+create_multipath_config() {
+  local dir="${1:-.}"
+  cat >"$dir/.vlt.json" <<'EOF'
+{
+  "addr": "https://vault.example.com",
+  "project": "test-project",
+  "environments": {
+    "dev": [
+      "secret/data/dev/test-project",
+      "secret/data/dev/shared"
+    ],
+    "staging": [
+      "secret/data/staging/test-project",
+      "secret/data/staging/shared"
+    ],
+    "prod": [
+      "secret/data/prod/test-project"
+    ]
   },
   "default_env": "dev"
 }
