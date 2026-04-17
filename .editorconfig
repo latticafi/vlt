@@ -7,10 +7,8 @@ trim_trailing_whitespace = true
 charset = utf-8
 
 [*.{sh,bash}]
-indent_style = space
-indent_size = 2
+indent_style = tab
 shell_variant = bash
 
 [*.bats]
-indent_style = space
-indent_size = 2
+indent_style = tab
