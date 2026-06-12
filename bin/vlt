@@ -21,38 +21,38 @@ GLOBAL_CONFIG_DIR="$HOME/.config/vlt"
 GLOBAL_CONFIG="$GLOBAL_CONFIG_DIR/config.json"
 # Find project config file (walk up directories)
 find_config() {
-  local dir="$PWD"
-  while [ "$dir" != "/" ]; do
-    if [ -f "$dir/.vlt.json" ]; then
-      echo "$dir/.vlt.json"
-      return 0
-    fi
-    dir=$(dirname "$dir")
-  done
-  return 1
+	local dir="$PWD"
+	while [ "$dir" != "/" ]; do
+		if [ -f "$dir/.vlt.json" ]; then
+			echo "$dir/.vlt.json"
+			return 0
+		fi
+		dir=$(dirname "$dir")
+	done
+	return 1
 }
 # Read a JSON key from a file
 read_json() {
-  local file="$1"
-  local key="$2"
-  local default="${3:-}"
-  local value
-  value=$(jq -r "$key // empty" "$file" 2>/dev/null)
-  echo "${value:-$default}"
+	local file="$1"
+	local key="$2"
+	local default="${3:-}"
+	local value
+	value=$(jq -r "$key // empty" "$file" 2>/dev/null)
+	echo "${value:-$default}"
 }
 # Global config helpers
 read_global() {
-  local key="$1"
-  if [ -f "$GLOBAL_CONFIG" ]; then
-    read_json "$GLOBAL_CONFIG" "$key"
-  fi
+	local key="$1"
+	if [ -f "$GLOBAL_CONFIG" ]; then
+		read_json "$GLOBAL_CONFIG" "$key"
+	fi
 }
 save_global() {
-  local addr="$1"
-  local method="$2"
-  local username="${3:-}"
-  mkdir -p "$GLOBAL_CONFIG_DIR"
-  cat >"$GLOBAL_CONFIG" <<EOF
+	local addr="$1"
+	local method="$2"
+	local username="${3:-}"
+	mkdir -p "$GLOBAL_CONFIG_DIR"
+	cat >"$GLOBAL_CONFIG" <<EOF
 {
   "addr": "${addr}",
   "method": "${method}",
@@ -62,58 +62,58 @@ EOF
 }
 # Resolve Vault address (project config → global config → prompt)
 resolve_addr() {
-  local addr=""
-  # 1. Try project .vlt.json
-  if config_file=$(find_config 2>/dev/null); then
-    addr=$(read_json "$config_file" '.addr')
-  fi
-  # 2. Try global config
-  if [ -z "$addr" ]; then
-    addr=$(read_global '.addr')
-  fi
-  # 3. Prompt
-  if [ -z "$addr" ]; then
-    read -rp "Vault address (e.g. https://vault.example.com): " addr
-    if [ -z "$addr" ]; then
-      echo "Error: Vault address is required" >&2
-      exit 1
-    fi
-  fi
-  # Auto-prefix https:// if missing
-  if [[ ! "$addr" =~ ^https?:// ]]; then
-    addr="https://$addr"
-  fi
-  echo "$addr"
+	local addr=""
+	# 1. Try project .vlt.json
+	if config_file=$(find_config 2>/dev/null); then
+		addr=$(read_json "$config_file" '.addr')
+	fi
+	# 2. Try global config
+	if [ -z "$addr" ]; then
+		addr=$(read_global '.addr')
+	fi
+	# 3. Prompt
+	if [ -z "$addr" ]; then
+		read -rp "Vault address (e.g. https://vault.example.com): " addr
+		if [ -z "$addr" ]; then
+			echo "Error: Vault address is required" >&2
+			exit 1
+		fi
+	fi
+	# Auto-prefix https:// if missing
+	if [[ ! "$addr" =~ ^https?:// ]]; then
+		addr="https://$addr"
+	fi
+	echo "$addr"
 }
 # Commands
 cmd_init() {
-  if [ -f ".vlt.json" ]; then
-    local reinit=""
-    read -rp ".vlt.json already exists. Reinitialize? [y/N]: " reinit
-    if [[ ! "$reinit" =~ ^[Yy]$ ]]; then
-      echo "Cancelled."
-      exit 0
-    fi
-  fi
-  local addr=""
-  local project=""
-  # Use saved address if we have one, only prompt if we don't
-  addr=$(read_global '.addr')
-  if [ -z "$addr" ]; then
-    read -rp "Vault address (e.g. https://vault.example.com): " addr
-    if [ -z "$addr" ]; then
-      echo "Error: Vault address is required"
-      exit 1
-    fi
-  else
-    echo "Using Vault at ${addr}"
-  fi
-  read -rp "Project name (e.g. rest-api, web-app): " project
-  if [ -z "$project" ]; then
-    echo "Error: project name is required"
-    exit 1
-  fi
-  cat >.vlt.json <<EOF
+	if [ -f ".vlt.json" ]; then
+		local reinit=""
+		read -rp ".vlt.json already exists. Reinitialize? [y/N]: " reinit
+		if [[ ! "$reinit" =~ ^[Yy]$ ]]; then
+			echo "Cancelled."
+			exit 0
+		fi
+	fi
+	local addr=""
+	local project=""
+	# Use saved address if we have one, only prompt if we don't
+	addr=$(read_global '.addr')
+	if [ -z "$addr" ]; then
+		read -rp "Vault address (e.g. https://vault.example.com): " addr
+		if [ -z "$addr" ]; then
+			echo "Error: Vault address is required"
+			exit 1
+		fi
+	else
+		echo "Using Vault at ${addr}"
+	fi
+	read -rp "Project name (e.g. rest-api, web-app): " project
+	if [ -z "$project" ]; then
+		echo "Error: project name is required"
+		exit 1
+	fi
+	cat >.vlt.json <<EOF
 {
   "addr": "${addr}",
   "project": "${project}",
@@ -125,338 +125,355 @@ cmd_init() {
   "default_env": "dev"
 }
 EOF
-  echo ""
-  echo "Created .vlt.json:"
-  echo ""
-  cat .vlt.json
-  echo ""
-  echo "Commit this file so your team shares the config."
+	echo ""
+	echo "Created .vlt.json:"
+	echo ""
+	cat .vlt.json
+	echo ""
+	echo "Commit this file so your team shares the config."
+	echo ""
+	echo "Tip: need secrets from multiple paths? Change a string to an array:"
+	echo "  \"dev\": [\"secret/data/dev/${project}\", \"secret/data/dev/shared\"]"
 }
 cmd_login() {
-  local method=""
-  # Parse flags
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-    --github | --gh)
-      method="github"
-      shift
-      ;;
-    --userpass | --up)
-      method="userpass"
-      shift
-      ;;
-    --token)
-      method="token"
-      shift
-      ;;
-    *)
-      echo "Unknown login flag: $1"
-      echo "Usage: vlt login [--gh|--userpass|--token]"
-      exit 1
-      ;;
-    esac
-  done
-  local addr
-  addr=$(resolve_addr)
-  export VAULT_ADDR="$addr"
-  # Default to saved method
-  if [ -z "$method" ]; then
-    method=$(read_global '.method')
-  fi
-  # If still no method, prompt
-  if [ -z "$method" ]; then
-    echo "Select auth method:"
-    echo "  1) github    (recommended)"
-    echo "  2) userpass"
-    echo "  3) token"
-    local choice
-    read -rp "Choice [1]: " choice
-    case "${choice:-1}" in
-    1) method="github" ;;
-    2) method="userpass" ;;
-    3) method="token" ;;
-    *)
-      echo "Invalid choice"
-      exit 1
-      ;;
-    esac
-  fi
-  echo "Logging in to ${addr} via ${method}..."
-  case "$method" in
-  github)
-    if ! command -v gh &>/dev/null; then
-      echo "Error: GitHub CLI is required. Install with: brew install gh"
-      exit 1
-    fi
-    if ! gh auth status &>/dev/null; then
-      echo "Not logged into GitHub. Running gh auth login..."
-      gh auth login
-    fi
-    vault login -method=github token="$(gh auth token)"
-    save_global "$addr" "github" ""
-    ;;
-  userpass)
-    local username=""
-    local saved_username
-    saved_username=$(read_global '.username')
-    if [ -n "$saved_username" ]; then
-      read -rp "Username [${saved_username}]: " username
-      username="${username:-$saved_username}"
-    else
-      read -rp "Username: " username
-      if [ -z "$username" ]; then
-        echo "Error: username is required"
-        exit 1
-      fi
-    fi
-    vault login -method=userpass username="$username"
-    save_global "$addr" "userpass" "$username"
-    ;;
-  token)
-    vault login
-    save_global "$addr" "token" ""
-    ;;
-  *)
-    echo "Unknown auth method: $method"
-    exit 1
-    ;;
-  esac
+	local method=""
+	# Parse flags
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--github | --gh)
+			method="github"
+			shift
+			;;
+		--userpass | --up)
+			method="userpass"
+			shift
+			;;
+		--token)
+			method="token"
+			shift
+			;;
+		*)
+			echo "Unknown login flag: $1"
+			echo "Usage: vlt login [--gh|--userpass|--token]"
+			exit 1
+			;;
+		esac
+	done
+	local addr
+	addr=$(resolve_addr)
+	export VAULT_ADDR="$addr"
+	# Default to saved method
+	if [ -z "$method" ]; then
+		method=$(read_global '.method')
+	fi
+	# If still no method, prompt
+	if [ -z "$method" ]; then
+		echo "Select auth method:"
+		echo "  1) github    (recommended)"
+		echo "  2) userpass"
+		echo "  3) token"
+		local choice
+		read -rp "Choice [1]: " choice
+		case "${choice:-1}" in
+		1) method="github" ;;
+		2) method="userpass" ;;
+		3) method="token" ;;
+		*)
+			echo "Invalid choice"
+			exit 1
+			;;
+		esac
+	fi
+	echo "Logging in to ${addr} via ${method}..."
+	case "$method" in
+	github)
+		if ! command -v gh &>/dev/null; then
+			echo "Error: GitHub CLI is required. Install with: brew install gh"
+			exit 1
+		fi
+		if ! gh auth status &>/dev/null; then
+			echo "Not logged into GitHub. Running gh auth login..."
+			gh auth login
+		fi
+		vault login -method=github token="$(gh auth token)"
+		save_global "$addr" "github" ""
+		;;
+	userpass)
+		local username=""
+		local saved_username
+		saved_username=$(read_global '.username')
+		if [ -n "$saved_username" ]; then
+			read -rp "Username [${saved_username}]: " username
+			username="${username:-$saved_username}"
+		else
+			read -rp "Username: " username
+			if [ -z "$username" ]; then
+				echo "Error: username is required"
+				exit 1
+			fi
+		fi
+		vault login -method=userpass username="$username"
+		save_global "$addr" "userpass" "$username"
+		;;
+	token)
+		vault login
+		save_global "$addr" "token" ""
+		;;
+	*)
+		echo "Unknown auth method: $method"
+		exit 1
+		;;
+	esac
 }
 cmd_run() {
-  local env=""
-  local quiet=false
-  local args=()
-  # Parse flags
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-    -e | --env)
-      env="$2"
-      shift 2
-      ;;
-    -q | --quiet)
-      quiet=true
-      shift
-      ;;
-    --)
-      shift
-      args=("$@")
-      break
-      ;;
-    *)
-      args=("$@")
-      break
-      ;;
-    esac
-  done
-  if [ ${#args[@]} -eq 0 ]; then
-    echo "Error: no command specified"
-    echo "Usage: vlt run [-e env] -- <command>"
-    exit 1
-  fi
-  # Find and read project config
-  local config_file
-  if ! config_file=$(find_config); then
-    echo "Error: no .vlt.json found (run 'vlt init' first)"
-    exit 1
-  fi
-  local addr
-  addr=$(resolve_addr)
-  # Determine environment
-  if [ -z "$env" ]; then
-    env=$(read_json "$config_file" '.default_env' "dev")
-  fi
-  # Get the secret path for this environment
-  local secret_path
-  secret_path=$(read_json "$config_file" ".environments.\"${env}\"")
-  if [ -z "$secret_path" ]; then
-    echo "Error: environment '${env}' not found in .vlt.json"
-    echo "Available environments:"
-    jq -r '.environments | keys[]' "$config_file"
-    exit 1
-  fi
-  # Check for vault token
-  if [ ! -f "$HOME/.vault-token" ] && [ -z "${VAULT_TOKEN:-}" ]; then
-    echo "Error: not authenticated. Run 'vlt login' first."
-    exit 1
-  fi
-  local log_flag=""
-  if [ "$quiet" = true ]; then
-    log_flag="-log-level=err"
-  fi
-  # Use envconsul to safely fetch secrets from Vault, but run `env`
-  # instead of the real command. This lets envconsul handle all Vault
-  # auth, leases, and injection — then we exec the real command
-  # directly so it gets full TTY/stdin access.
-  # -pristine ensures we only capture injected secrets, not the
-  # inherited parent environment.
-  local secrets
-  # shellcheck disable=SC2086
-  secrets=$(envconsul \
-    -vault-addr="$addr" \
-    -secret="$secret_path" \
-    -no-prefix \
-    -pristine \
-    -once \
-    $log_flag \
-    -- /usr/bin/env) || {
-    echo "Error: failed to fetch secrets from Vault"
-    exit 1
-  }
-  # Export each secret into the current environment
-  while IFS='=' read -r key value; do
-    [ -n "$key" ] && export "$key=$value"
-  done <<<"$secrets"
-  # Exec the command directly — full TTY/stdin preserved
-  exec "${args[@]}"
+	local env=""
+	local quiet=false
+	local args=()
+	# Parse flags
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-e | --env)
+			env="$2"
+			shift 2
+			;;
+		-q | --quiet)
+			quiet=true
+			shift
+			;;
+		--)
+			shift
+			args=("$@")
+			break
+			;;
+		*)
+			args=("$@")
+			break
+			;;
+		esac
+	done
+	if [ ${#args[@]} -eq 0 ]; then
+		echo "Error: no command specified"
+		echo "Usage: vlt run [-e env] -- <command>"
+		exit 1
+	fi
+	# Find and read project config
+	local config_file
+	if ! config_file=$(find_config); then
+		echo "Error: no .vlt.json found (run 'vlt init' first)"
+		exit 1
+	fi
+	local addr
+	addr=$(resolve_addr)
+	# Determine environment
+	if [ -z "$env" ]; then
+		env=$(read_json "$config_file" '.default_env' "dev")
+	fi
+	# Get the secret path(s) for this environment
+	# Supports both string ("secret/data/dev/core") and array formats
+	local path_type
+	path_type=$(jq -r ".environments.\"${env}\" | type" "$config_file" 2>/dev/null)
+	local -a secret_paths=()
+	if [ "$path_type" = "array" ]; then
+		while IFS= read -r p; do
+			secret_paths+=("$p")
+		done < <(jq -r ".environments.\"${env}\"[]" "$config_file")
+	elif [ "$path_type" = "string" ]; then
+		secret_paths+=("$(read_json "$config_file" ".environments.\"${env}\"")")
+	fi
+	if [ ${#secret_paths[@]} -eq 0 ]; then
+		echo "Error: environment '${env}' not found in .vlt.json"
+		echo "Available environments:"
+		jq -r '.environments | keys[]' "$config_file"
+		exit 1
+	fi
+	# Check for vault token
+	if [ ! -f "$HOME/.vault-token" ] && [ -z "${VAULT_TOKEN:-}" ]; then
+		echo "Error: not authenticated. Run 'vlt login' first."
+		exit 1
+	fi
+	local log_flag=""
+	if [ "$quiet" = true ]; then
+		log_flag="-log-level=err"
+	fi
+	# Build envconsul secret flags
+	local -a secret_flags=()
+	for p in "${secret_paths[@]}"; do
+		secret_flags+=(-secret="$p")
+	done
+	# Use envconsul to safely fetch secrets from Vault, but run `env`
+	# instead of the real command. This lets envconsul handle all Vault
+	# auth, leases, and injection — then we exec the real command
+	# directly so it gets full TTY/stdin access.
+	# -pristine ensures we only capture injected secrets, not the
+	# inherited parent environment.
+	local secrets
+	# shellcheck disable=SC2086
+	secrets=$(envconsul \
+		-vault-addr="$addr" \
+		"${secret_flags[@]}" \
+		-no-prefix \
+		-pristine \
+		-once \
+		$log_flag \
+		-- /usr/bin/env) || {
+		echo "Error: failed to fetch secrets from Vault"
+		exit 1
+	}
+	# Export each secret into the current environment
+	while IFS='=' read -r key value; do
+		[ -n "$key" ] && export "$key=$value"
+	done <<<"$secrets"
+	# Exec the command directly — full TTY/stdin preserved
+	exec "${args[@]}"
 }
 cmd_status() {
-  # Hidden --prompt flag for starship
-  if [ "${1:-}" = "--prompt" ]; then
-    local config_file
-    config_file=$(find_config 2>/dev/null) || exit 0
-    local addr
-    addr=$(read_json "$config_file" '.addr')
-    local project
-    project=$(read_json "$config_file" '.project')
-    [ -z "$addr" ] || [ -z "$project" ] && exit 0
-    local status
-    status=$(curl -sk -o /dev/null -w "%{http_code}" \
-      "$addr/v1/sys/health" --max-time 3 2>/dev/null)
-    local icon
-    case "$status" in
-    200 | 429 | 473) icon="✓" ;;
-    503) icon="✗" ;;
-    *) icon="?" ;;
-    esac
-    echo "($project) [$icon]"
-    return
-  fi
-  echo "── Config ──"
-  local addr=""
-  if config_file=$(find_config 2>/dev/null); then
-    echo "Config file: $config_file"
-    addr=$(read_json "$config_file" '.addr')
-    local project
-    project=$(read_json "$config_file" '.project')
-    local default_env
-    default_env=$(read_json "$config_file" '.default_env' "dev")
-    echo "Address:     $addr"
-    echo "Project:     $project"
-    echo "Default env: $default_env"
-    echo "Environments:"
-    jq -r '.environments | to_entries[] | "  \(.key): \(.value)"' "$config_file"
-  else
-    echo "No .vlt.json found (run 'vlt init')"
-    addr=$(read_global '.addr')
-    if [ -n "$addr" ]; then
-      echo "Global addr: $addr"
-    fi
-  fi
-  local saved_method
-  saved_method=$(read_global '.method')
-  if [ -n "$saved_method" ]; then
-    echo "Auth:        $saved_method"
-  fi
-  local saved_username
-  saved_username=$(read_global '.username')
-  if [ -n "$saved_username" ]; then
-    echo "Username:    $saved_username"
-  fi
-  echo ""
-  echo "── Auth ──"
-  if [ -z "$addr" ]; then
-    addr=$(read_global '.addr')
-  fi
-  if [ -z "$addr" ]; then
-    echo "No Vault address configured"
-    return
-  fi
-  export VAULT_ADDR="$addr"
-  if vault token lookup -format=json 2>/dev/null | jq -r '"Token valid, expires: \(.data.expire_time // "never")"' 2>/dev/null; then
-    true
-  else
-    echo "Not authenticated (run 'vlt login')"
-  fi
+	# Hidden --prompt flag for starship
+	if [ "${1:-}" = "--prompt" ]; then
+		local config_file
+		config_file=$(find_config 2>/dev/null) || exit 0
+		local addr
+		addr=$(read_json "$config_file" '.addr')
+		local project
+		project=$(read_json "$config_file" '.project')
+		[ -z "$addr" ] || [ -z "$project" ] && exit 0
+		local status
+		status=$(curl -sk -o /dev/null -w "%{http_code}" \
+			"$addr/v1/sys/health" --max-time 3 2>/dev/null)
+		local icon
+		case "$status" in
+		200 | 429 | 473) icon="✓" ;;
+		503) icon="✗" ;;
+		*) icon="?" ;;
+		esac
+		echo "($project) [$icon]"
+		return
+	fi
+	echo "── Config ──"
+	local addr=""
+	if config_file=$(find_config 2>/dev/null); then
+		echo "Config file: $config_file"
+		addr=$(read_json "$config_file" '.addr')
+		local project
+		project=$(read_json "$config_file" '.project')
+		local default_env
+		default_env=$(read_json "$config_file" '.default_env' "dev")
+		echo "Address:     $addr"
+		echo "Project:     $project"
+		echo "Default env: $default_env"
+		echo "Environments:"
+		jq -r '.environments | to_entries[] | "  \(.key): \(.value)"' "$config_file"
+	else
+		echo "No .vlt.json found (run 'vlt init')"
+		addr=$(read_global '.addr')
+		if [ -n "$addr" ]; then
+			echo "Global addr: $addr"
+		fi
+	fi
+	local saved_method
+	saved_method=$(read_global '.method')
+	if [ -n "$saved_method" ]; then
+		echo "Auth:        $saved_method"
+	fi
+	local saved_username
+	saved_username=$(read_global '.username')
+	if [ -n "$saved_username" ]; then
+		echo "Username:    $saved_username"
+	fi
+	echo ""
+	echo "── Auth ──"
+	if [ -z "$addr" ]; then
+		addr=$(read_global '.addr')
+	fi
+	if [ -z "$addr" ]; then
+		echo "No Vault address configured"
+		return
+	fi
+	export VAULT_ADDR="$addr"
+	if vault token lookup -format=json 2>/dev/null | jq -r '"Token valid, expires: \(.data.expire_time // "never")"' 2>/dev/null; then
+		true
+	else
+		echo "Not authenticated (run 'vlt login')"
+	fi
 }
 cmd_update() {
-  local install_dir="$HOME/.local/bin"
-  mkdir -p "$install_dir"
-  mkdir -p "$GLOBAL_CONFIG_DIR"
-  local current="dev"
-  if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
-    current=$(cat "$GLOBAL_CONFIG_DIR/version")
-  fi
-  # Get latest release from GitHub API
-  local release_json
-  release_json=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/releases/latest" 2>/dev/null)
-  local latest
-  latest=$(echo "$release_json" | jq -r '.tag_name // empty')
-  if [ -z "$latest" ]; then
-    echo "Error: could not fetch latest release from GitHub"
-    exit 1
-  fi
-  if [ "$current" = "$latest" ]; then
-    echo "Already up to date (vlt ${current})"
-    return
-  fi
-  # Download the script from the release tag
-  echo "Downloading vlt ${latest}..."
-  local tmpdir
-  tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/bin/vlt" -o "$tmpdir/vlt"
-  # Verify checksum
-  local checksums_url
-  checksums_url=$(echo "$release_json" | jq -r '.assets[] | select(.name == "checksums.txt") | .browser_download_url // empty')
-  if [ -n "$checksums_url" ]; then
-    curl -fsSL "$checksums_url" -o "$tmpdir/checksums.txt"
-    local expected actual
-    expected=$(grep ' vlt$' "$tmpdir/checksums.txt" | awk '{print $1}')
-    actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
-    if [ "$expected" != "$actual" ]; then
-      echo "Error: checksum verification failed"
-      echo "  expected: $expected"
-      echo "  actual:   $actual"
-      exit 1
-    fi
-    echo "  Checksum verified ✓"
-  fi
-  mv "$tmpdir/vlt" "$install_dir/vlt"
-  chmod +x "$install_dir/vlt"
-  # Update completions
-  local completion_dir="$HOME/.local/share/vlt/completions"
-  mkdir -p "$completion_dir"
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.bash" -o "$completion_dir/vlt.bash" 2>/dev/null
-  curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.zsh" -o "$completion_dir/vlt.zsh" 2>/dev/null
-  # Save version locally
-  echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
-  echo "Updated vlt ${current} → ${latest}"
+	local install_dir="$HOME/.local/bin"
+	mkdir -p "$install_dir"
+	mkdir -p "$GLOBAL_CONFIG_DIR"
+	local current="dev"
+	if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
+		current=$(cat "$GLOBAL_CONFIG_DIR/version")
+	fi
+	# Get latest release from GitHub API
+	local release_json
+	release_json=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/releases/latest" 2>/dev/null)
+	local latest
+	latest=$(echo "$release_json" | jq -r '.tag_name // empty')
+	if [ -z "$latest" ]; then
+		echo "Error: could not fetch latest release from GitHub"
+		exit 1
+	fi
+	if [ "$current" = "$latest" ]; then
+		echo "Already up to date (vlt ${current})"
+		return
+	fi
+	# Download the script from the release tag
+	echo "Downloading vlt ${latest}..."
+	local tmpdir
+	tmpdir=$(mktemp -d)
+	trap 'rm -rf "$tmpdir"' EXIT
+	curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/bin/vlt" -o "$tmpdir/vlt"
+	# Verify checksum
+	local checksums_url
+	checksums_url=$(echo "$release_json" | jq -r '.assets[] | select(.name == "checksums.txt") | .browser_download_url // empty')
+	if [ -n "$checksums_url" ]; then
+		curl -fsSL "$checksums_url" -o "$tmpdir/checksums.txt"
+		local expected actual
+		expected=$(grep ' vlt$' "$tmpdir/checksums.txt" | awk '{print $1}')
+		actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
+		if [ "$expected" != "$actual" ]; then
+			echo "Error: checksum verification failed"
+			echo "  expected: $expected"
+			echo "  actual:   $actual"
+			exit 1
+		fi
+		echo "  Checksum verified ✓"
+	fi
+	mv "$tmpdir/vlt" "$install_dir/vlt"
+	chmod +x "$install_dir/vlt"
+	# Update completions
+	local completion_dir="$HOME/.local/share/vlt/completions"
+	mkdir -p "$completion_dir"
+	curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.bash" -o "$completion_dir/vlt.bash" 2>/dev/null
+	curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/completions/vlt.zsh" -o "$completion_dir/vlt.zsh" 2>/dev/null
+	# Save version locally
+	echo "$latest" >"$GLOBAL_CONFIG_DIR/version"
+	echo "Updated vlt ${current} → ${latest}"
 }
 cmd_version() {
-  local version="dev"
-  if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
-    version=$(cat "$GLOBAL_CONFIG_DIR/version")
-  fi
-  echo "vlt $version"
+	local version="dev"
+	if [ -f "$GLOBAL_CONFIG_DIR/version" ]; then
+		version=$(cat "$GLOBAL_CONFIG_DIR/version")
+	fi
+	echo "vlt $version"
 }
 cmd_starship() {
-  if ! command -v starship &>/dev/null; then
-    echo "Error: starship is not installed"
-    exit 1
-  fi
-  if starship config custom.vlt.command 2>/dev/null | grep -q 'vlt status'; then
-    echo "Already configured"
-    return
-  fi
-  starship config custom.vlt.command "$HOME/.local/bin/vlt status --prompt"
-  starship config custom.vlt.when "$HOME/.local/bin/vlt status --prompt"
-  starship config custom.vlt.symbol '\ue8d2'
-  starship config custom.vlt.format "via [\$symbol \$output](\$style) "
-  starship config custom.vlt.shell '["bash", "--nologin"]'
-  echo "Added vlt to starship prompt"
+	if ! command -v starship &>/dev/null; then
+		echo "Error: starship is not installed"
+		exit 1
+	fi
+	if starship config custom.vlt.command 2>/dev/null | grep -q 'vlt status'; then
+		echo "Already configured"
+		return
+	fi
+	starship config custom.vlt.command "$HOME/.local/bin/vlt status --prompt"
+	starship config custom.vlt.when "$HOME/.local/bin/vlt status --prompt"
+	starship config custom.vlt.symbol '\ue8d2'
+	starship config custom.vlt.format "via [\$symbol \$output](\$style) "
+	starship config custom.vlt.shell '["bash", "--nologin"]'
+	echo "Added vlt to starship prompt"
 }
 cmd_help() {
-  cat <<'EOF'
+	cat <<'EOF'
 vlt — Vault secret injector
 Commands:
   vlt init                   Create .vlt.json in current directory
@@ -471,39 +488,39 @@ Commands:
   vlt starship               Add vlt status to starship prompt
 EOF
 }
-# Main — only run when executed, not when sourced (for testing)
+# Main — only run when executed, not when sourced (enables testing)
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  case "${1:-help}" in
-  init)
-    shift
-    cmd_init "$@"
-    ;;
-  login)
-    shift
-    cmd_login "$@"
-    ;;
-  run)
-    shift
-    cmd_run "$@"
-    ;;
-  status)
-    shift
-    cmd_status "$@"
-    ;;
-  starship)
-    shift
-    cmd_starship "$@"
-    ;;
-  update)
-    shift
-    cmd_update "$@"
-    ;;
-  help | -h | --help) cmd_help ;;
-  version | -v | --version) cmd_version ;;
-  *)
-    echo "Unknown command: $1"
-    echo "Run 'vlt help' for usage"
-    exit 1
-    ;;
-  esac
+	case "${1:-help}" in
+	init)
+		shift
+		cmd_init "$@"
+		;;
+	login)
+		shift
+		cmd_login "$@"
+		;;
+	run)
+		shift
+		cmd_run "$@"
+		;;
+	status)
+		shift
+		cmd_status "$@"
+		;;
+	starship)
+		shift
+		cmd_starship "$@"
+		;;
+	update)
+		shift
+		cmd_update "$@"
+		;;
+	help | -h | --help) cmd_help ;;
+	version | -v | --version) cmd_version ;;
+	*)
+		echo "Unknown command: $1"
+		echo "Run 'vlt help' for usage"
+		exit 1
+		;;
+	esac
 fi
