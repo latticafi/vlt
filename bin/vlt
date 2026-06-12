@@ -338,7 +338,7 @@ cmd_status() {
 		[ -z "$addr" ] || [ -z "$project" ] && exit 0
 		local status
 		status=$(curl -sk -o /dev/null -w "%{http_code}" \
-			"$addr/v1/sys/health" --max-time 3 2>/dev/null)
+			"$addr/v1/sys/health" --max-time 3 2>/dev/null) || status="000"
 		local icon
 		case "$status" in
 		200 | 429 | 473) icon="✓" ;;
@@ -420,7 +420,8 @@ cmd_update() {
 	echo "Downloading vlt ${latest}..."
 	local tmpdir
 	tmpdir=$(mktemp -d)
-	trap 'rm -rf "$tmpdir"' EXIT
+	# shellcheck disable=SC2064  # expand $tmpdir now so cleanup survives function scope at EXIT
+	trap "rm -rf -- '$tmpdir'" EXIT
 	curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/${latest}/bin/vlt" -o "$tmpdir/vlt"
 	# Verify checksum
 	local checksums_url
