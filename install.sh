@@ -48,18 +48,15 @@ if [ -f "$SCRIPT_DIR/bin/vlt" ]; then
 elif [ -f "$SCRIPT_DIR/vlt" ]; then
 	cp "$SCRIPT_DIR/vlt" "$INSTALL_DIR/vlt"
 else
-	tmpdir
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf "$tmpdir"' EXIT
 	echo "Downloading vlt..."
 	curl -fsSL "https://raw.githubusercontent.com/latticafi/vlt/main/bin/vlt" -o "$tmpdir/vlt"
 	# Verify checksum if checksums.txt is available in the latest release
-	checksums_url
 	checksums_url=$(curl -fsSL "https://api.github.com/repos/latticafi/vlt/releases/latest" 2>/dev/null |
 		jq -r '.assets[] | select(.name == "checksums.txt") | .browser_download_url // empty' 2>/dev/null)
 	if [ -n "$checksums_url" ]; then
 		curl -fsSL "$checksums_url" -o "$tmpdir/checksums.txt"
-		expected actual
 		expected=$(grep ' vlt$' "$tmpdir/checksums.txt" | awk '{print $1}')
 		actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
 		if [ "$expected" != "$actual" ]; then
