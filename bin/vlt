@@ -319,10 +319,21 @@ cmd_run() {
 		echo "Error: failed to fetch secrets from Vault"
 		exit 1
 	}
-	# Export each secret into the current environment
-	while IFS='=' read -r key value; do
-		[ -n "$key" ] && export "$key=$value"
+	# Export each secret into the current environment. `env` prints KEY=VALUE,
+	# but a value may span multiple physical lines (e.g. a PEM), so a line
+	# starts a new entry only when it begins with `IDENT=`; otherwise it
+	# continues the current value.
+	local cur_key="" cur_val=""
+	while IFS= read -r line; do
+		if [[ "$line" == [A-Za-z_]*=* && "${line%%=*}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+			[ -n "$cur_key" ] && export "$cur_key=$cur_val"
+			cur_key="${line%%=*}"
+			cur_val="${line#*=}"
+		elif [ -n "$cur_key" ]; then
+			cur_val="$cur_val"$'\n'"$line"
+		fi
 	done <<<"$secrets"
+	[ -n "$cur_key" ] && export "$cur_key=$cur_val"
 	# Exec the command directly — full TTY/stdin preserved
 	exec "${args[@]}"
 }
