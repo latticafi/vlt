@@ -18,7 +18,17 @@ cd vlt
 curl -fsSL https://raw.githubusercontent.com/latticafi/vlt/main/install.sh | bash
 ```
 
-This installs `vlt` to `~/.local/bin` and ensures `vault`, `envconsul`, `jq`, and `gh` are installed via Homebrew.
+This installs `vlt` to `~/.local/bin` along with its dependencies — `envconsul`,
+`jq`, and `gh`. The Vault CLI is **not** required: `vlt` talks to Vault's HTTP
+API directly with `curl`, honouring `VAULT_ADDR`, `VAULT_TOKEN`,
+`VAULT_NAMESPACE`, `VAULT_CACERT`, and `VAULT_SKIP_VERIFY`.
+
+- **macOS**: installed via Homebrew when it's present.
+- **Linux** (x86_64 / arm64): downloaded from the projects' official releases
+  into `~/.local/bin` and verified against their published SHA256 checksums. No
+  root needed, except to `apt`/`dnf`/`apk` install `unzip` if you don't have it.
+- Anywhere else: the installer names what's missing and links to each project's
+  install docs.
 
 ## Quick start
 
@@ -72,12 +82,18 @@ must have userpass auth enabled.
 vlt login --userpass
 ```
 
-**Token:** Direct Vault token, prompted interactively. Works with any Vault
-setup.
+**Token:** Direct Vault token. Works with any Vault setup. Prompted interactively
+on a terminal; when stdin is a pipe the token is read from it, so CI can do:
 
 ```bash
-vlt login --token
+vlt login --token                    # interactive, input hidden
+echo "$VAULT_TOKEN" | vlt login --token   # non-interactive
 ```
+
+The token is validated against Vault before it's written to `~/.vault-token`, so
+a bad token fails at login rather than on the next `vlt run`. In CI you can also
+skip `login` entirely — `vlt run` picks up `VAULT_TOKEN` straight from the
+environment.
 
 ## Config
 

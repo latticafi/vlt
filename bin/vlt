@@ -60,6 +60,74 @@ save_global() {
 }
 EOF
 }
+# Vault HTTP API client. vlt only touches four endpoints, and the official CLI
+# ships as a ~500MB server binary — curl and jq are already hard dependencies.
+# Honours the same VAULT_* env vars the CLI does for TLS and namespaces.
+vault_token() {
+	if [ -n "${VAULT_TOKEN:-}" ]; then
+		echo "$VAULT_TOKEN"
+	elif [ -f "$HOME/.vault-token" ]; then
+		cat "$HOME/.vault-token"
+	fi
+}
+# Written without a trailing newline, matching what `vault login` produces,
+# so envconsul and the Vault CLI both read it back cleanly.
+save_token() {
+	(
+		umask 077
+		printf '%s' "$1" >"$HOME/.vault-token"
+	)
+}
+# vault_api <METHOD> <path> [json_body] — prints the response body, non-zero on failure
+vault_api() {
+	local method="$1" path="$2" data="${3:-}"
+	local -a curl_args=(-sS -X "$method" --max-time 30 -w '\n%{http_code}')
+	local token
+	token=$(vault_token)
+	if [ -n "$token" ]; then
+		curl_args+=(-H "X-Vault-Token: $token")
+	fi
+	if [ -n "${VAULT_NAMESPACE:-}" ]; then
+		curl_args+=(-H "X-Vault-Namespace: ${VAULT_NAMESPACE}")
+	fi
+	if [ -n "${VAULT_CACERT:-}" ]; then
+		curl_args+=(--cacert "${VAULT_CACERT}")
+	fi
+	if [ "${VAULT_SKIP_VERIFY:-}" = "true" ] || [ "${VAULT_SKIP_VERIFY:-}" = "1" ]; then
+		curl_args+=(-k)
+	fi
+	if [ -n "$data" ]; then
+		curl_args+=(-H "Content-Type: application/json" -d "$data")
+	fi
+	local response code body
+	if ! response=$(curl "${curl_args[@]}" "${VAULT_ADDR}/v1/${path}" 2>/dev/null); then
+		echo "Error: could not reach Vault at ${VAULT_ADDR}" >&2
+		return 1
+	fi
+	code="${response##*$'\n'}"
+	body="${response%$'\n'*}"
+	if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+		# Vault packs multierrors into one string with embedded newlines and tabs
+		# ("2 errors occurred:\n\t* permission denied\n\t..."), so flatten to one line
+		local msg
+		msg=$(echo "$body" | jq -r '[.errors[]?] | join("; ")' 2>/dev/null |
+			tr -s '[:space:]' ' ' | sed 's/ *$//') || msg=""
+		echo "Error: Vault returned ${code}${msg:+ — ${msg}}" >&2
+		return 1
+	fi
+	echo "$body"
+}
+# Exchange auth credentials for a token and persist it
+vault_auth() {
+	local path="$1" data="$2"
+	local token
+	token=$(VAULT_TOKEN="" vault_api POST "$path" "$data" | jq -r '.auth.client_token // empty')
+	if [ -z "$token" ]; then
+		echo "Error: authentication failed" >&2
+		exit 1
+	fi
+	save_token "$token"
+}
 # Resolve Vault address (project config → global config → prompt)
 resolve_addr() {
 	local addr=""
@@ -188,15 +256,16 @@ cmd_login() {
 	case "$method" in
 	github)
 		if ! command -v gh &>/dev/null; then
-			echo "Error: GitHub CLI is required. Install with: brew install gh"
+			echo "Error: GitHub CLI is required. Install it: https://github.com/cli/cli#installation"
 			exit 1
 		fi
 		if ! gh auth status &>/dev/null; then
 			echo "Not logged into GitHub. Running gh auth login..."
 			gh auth login
 		fi
-		vault login -method=github token="$(gh auth token)"
+		vault_auth "auth/github/login" "$(jq -n --arg t "$(gh auth token)" '{token: $t}')"
 		save_global "$addr" "github" ""
+		echo "Success! Logged in via github."
 		;;
 	userpass)
 		local username=""
@@ -212,12 +281,34 @@ cmd_login() {
 				exit 1
 			fi
 		fi
-		vault login -method=userpass username="$username"
+		local password=""
+		read -rsp "Password: " password
+		echo ""
+		vault_auth "auth/userpass/login/${username}" "$(jq -n --arg p "$password" '{password: $p}')"
 		save_global "$addr" "userpass" "$username"
+		echo "Success! Logged in via userpass."
 		;;
 	token)
-		vault login
+		local token=""
+		# Read from stdin when it isn't a terminal, so CI can pipe a token in
+		if [ -t 0 ]; then
+			read -rsp "Token (will be hidden): " token
+			echo ""
+		else
+			read -r token || true
+		fi
+		token="${token%$'\r'}"
+		if [ -z "$token" ]; then
+			echo "Error: token is required"
+			exit 1
+		fi
+		# Validate before persisting, so a bad token fails here and not on the next run
+		if ! VAULT_TOKEN="$token" vault_api GET "auth/token/lookup-self" >/dev/null; then
+			exit 1
+		fi
+		save_token "$token"
 		save_global "$addr" "token" ""
+		echo "Success! Logged in via token."
 		;;
 	*)
 		echo "Unknown auth method: $method"
@@ -400,7 +491,7 @@ cmd_status() {
 		return
 	fi
 	export VAULT_ADDR="$addr"
-	if vault token lookup -format=json 2>/dev/null | jq -r '"Token valid, expires: \(.data.expire_time // "never")"' 2>/dev/null; then
+	if vault_api GET "auth/token/lookup-self" 2>/dev/null | jq -r '"Token valid, expires: \(.data.expire_time // "never")"' 2>/dev/null; then
 		true
 	else
 		echo "Not authenticated (run 'vlt login')"
@@ -441,7 +532,11 @@ cmd_update() {
 		curl -fsSL "$checksums_url" -o "$tmpdir/checksums.txt"
 		local expected actual
 		expected=$(grep ' vlt$' "$tmpdir/checksums.txt" | awk '{print $1}')
-		actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
+		if command -v shasum &>/dev/null; then
+			actual=$(shasum -a 256 "$tmpdir/vlt" | awk '{print $1}')
+		else
+			actual=$(sha256sum "$tmpdir/vlt" | awk '{print $1}')
+		fi
 		if [ "$expected" != "$actual" ]; then
 			echo "Error: checksum verification failed"
 			echo "  expected: $expected"
